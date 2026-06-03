@@ -1,0 +1,47 @@
+{
+  "name": "@stratchai/strategy-spec",
+  "version": "0.1.0",
+  "description": "Declarative trading strategy specifications + code generator. Compose strategies from indicators + rule predicates instead of hand-writing JavaScript.",
+  "main": "src/index.js",
+  "bin": {
+    "sk-build-spec": "./src/generator.js"
+  },
+  "files": [
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node tests/smoke.test.js"
+  },
+  "keywords": [
+    "trading",
+    "algotrading",
+    "systematic-trading",
+    "backtest",
+    "strategy",
+    "declarative",
+    "code-generation",
+    "stratchai"
+  ],
+  "author": "brady house",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stratchai/strategy-spec.git"
+  },
+  "bugs": {
+    "url": "https://github.com/stratchai/strategy-spec/issues"
+  },
+  "homepage": "https://github.com/stratchai/strategy-spec#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^17.0.0",
+    "zod": "^3.22.0"
+  },
+  "peerDependencies": {
+    "@stratchai/indicators": "^0.2.1"
+  }
+}
