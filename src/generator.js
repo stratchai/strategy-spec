@@ -551,6 +551,12 @@ ${hasVwap ? `
   // "stale signal" entries where the candle ran far past the band before the
   // order executed — see momentum_breakout_stock_daily SNOW trade 2026-05-29.
   const bbFillDivergencePct = bb ? ((price - bb.upper) / bb.upper) * 100 : 0;
+  // Distance of entry price from BB middle, as % of middle. Negative = below
+  // middle; positive = above. Stronger fast-SL separator than bb-position
+  // alone (Cohen's d=0.78 vs bb_pos d=0.63 on the 2026-06-03 358-trade
+  // probe). Use as an entry gate to reject extended breakouts in
+  // wide-band-regime conditions.
+  const bbDistFromMiddlePct = bb && bb.middle ? ((price - bb.middle) / bb.middle) * 100 : 0;
 
 ${hasOpeningRange ? `  // opening_range update — track today's ET session range.
   // Reset state on new ET date; accumulate high/low for first N bars; expose
@@ -911,6 +917,7 @@ function mapLeftSide(c) {
   if (c.indicator === "band" && c.field === "wideEnough") return "wideEnough";
   if (c.indicator === "band" && c.field === "aboveUpper") return "aboveUpper";
   if (c.indicator === "band" && c.field === "fillDivergencePct") return "bbFillDivergencePct";
+  if (c.indicator === "band" && c.field === "distFromMiddlePct") return "bbDistFromMiddlePct";
   if (c.indicator === "band" && c.field === "priceAboveMiddle") return "price >= bb.middle";
   if (c.indicator === "opening_range" && c.field === "aboveHigh")  return "openingRangeAboveHigh";
   if (c.indicator === "opening_range" && c.field === "belowLow")   return "openingRangeBelowLow";
