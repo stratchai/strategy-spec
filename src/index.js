@@ -13,9 +13,6 @@
  *
  * Generated strategies depend on `@stratchai/indicators` at runtime (peer
  * dependency). Consumers should install both packages.
- *
- * Extracted from `@stratchai/core` 2026-06-02 (core v1.2.22). The original
- * lives in core git history until v1.2.21.
  */
 "use strict";
 

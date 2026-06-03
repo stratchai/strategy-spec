@@ -76,10 +76,6 @@ Each indicator exposes specific fields — see [`@stratchai/indicators`](https:/
 - `macro` — read `data/macro_guard.json` cached state
 - `breakeven` — has price recovered to entry
 
-## Origin
-
-Extracted from [`@stratchai/core`](https://www.npmjs.com/package/@stratchai/core) v1.2.22 (2026-06-03). The full git history of the generator lives in core's tree at `src/tools/build/strategy_from_spec.js` through v1.2.21. Future development happens here.
-
 ## License
 
 MIT
