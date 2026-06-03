@@ -205,12 +205,14 @@ function generateStrategyCode(spec) {
     : "";
 
   return `${autogen}${header}const { calcVolIndex, calcBollingerBands, calcSMA, calcRSI, calcATR, calcATRExpansion, calcEMA, calcMACD, calcStochastic, calcTrendStructure, calcFlagPattern, calcCandlePattern, calcHammer${hasVwap ? ", calcVWAP" : ""}${hasEngulfing ? ", calcEngulfing" : ""}${hasMorningStar ? ", calcMorningStar" : ""}${hasDoubleBottom ? ", calcDoubleBottom" : ""}${hasCupAndHandle ? ", calcCupAndHandle" : ""}${hasMassIndex ? ", calcMassIndex" : ""}${hasAroon ? ", calcAroon" : ""}${hasAdx ? ", calcADX" : ""}${hasSupertrend ? ", calcSupertrend" : ""}${hasObv ? ", calcOBV" : ""}${hasPsar ? ", calcParabolicSAR" : ""}${hasAlligator ? ", calcAlligator" : ""}${hasAo ? ", calcAwesomeOscillator" : ""}${hasRoc ? ", calcROC" : ""}${hasKeltner ? ", calcKeltner" : ""}${hasMfi ? ", calcMFI" : ""}${hasCmf ? ", calcCMF" : ""}${hasDonchian ? ", calcDonchian" : ""}${hasHma ? ", calcHMA" : ""}${hasWeek52 ? ", calc52WeekHighLow" : ""}${hasPivot ? ", calcPivotPoints" : ""}${hasFib ? ", calcFibonacci" : ""}${hasIchimoku ? ", calcIchimoku" : ""}${hasAscendingTriangle ? ", calcAscendingTriangle" : ""} } = require("@stratchai/indicators");
-const {
-  STOP_LOSS_PCT,
-  MIN_BANDWIDTH_PCT,
-  COOLDOWN_MS,
-  TAKE_PROFIT_PCT,
-} = require("@stratchai/core").config;
+// Library-default fallbacks for params not provided in the spec's \`params\`
+// block. The spec's params take precedence (via the \`params.X ?? CONST\`
+// pattern below). These literals make the generated strategy self-contained:
+// only @stratchai/indicators is required at runtime.
+const STOP_LOSS_PCT     = -3;       // unused in the current template; kept for forward-compat
+const TAKE_PROFIT_PCT   = 6;        // unused in the current template; kept for forward-compat
+const MIN_BANDWIDTH_PCT = 3;        // fallback for params.min_bw_pct
+const COOLDOWN_MS       = 60_000;   // fallback for params.strategy_cooldown_ms (60s)
 
 const _defaultParams = ${JSON.stringify(spec.params || {})};
 

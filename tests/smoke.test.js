@@ -87,6 +87,33 @@ ok("generated code is parseable JavaScript", () => {
   new Function(code);
 });
 
+ok("generated code has zero @stratchai/core references (must be self-contained)", () => {
+  const code = generateStrategyCode({
+    name: "isolation_test",
+    exchange: "coinbase",
+    candle_granularity: "ONE_DAY",
+    candle_window: 200,
+    params: { sl_pct: -3, tp_pct: 6 },
+    entry_rules: [{
+      mode: "ENTRY",
+      when: [{ indicator: "trend", field: "up", op: "==", value: true }],
+    }],
+    exit_rules: [{
+      applies_to: "ENTRY",
+      when: [{ type: "pnl", field: "pnlPct", op: "<=", value_from_param: "sl_pct" }],
+      reason: "SL",
+    }],
+  });
+  // The generated strategy must only require @stratchai/indicators at runtime.
+  // Any @stratchai/core reference (real or in comments) is a regression — core
+  // is not on npm, so generated code with that reference fails to load for
+  // anyone outside the private workspace.
+  assert.ok(
+    !code.includes("@stratchai/core"),
+    "generated code must not reference @stratchai/core (even in comments)"
+  );
+});
+
 console.log("");
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
