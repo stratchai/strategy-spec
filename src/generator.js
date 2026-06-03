@@ -162,6 +162,13 @@ function hasIchimokuIndicator(spec) {
   return allRules.some(r => (r.when || []).some(c => c.indicator === "ichimoku"));
 }
 
+// Returns true if any rule references the event_score (macro_regime composite) indicator.
+// Used to conditionally emit the macro_regime.json reader at strategy step time.
+function hasEventScoreIndicator(spec) {
+  const allRules = [...(spec.entry_rules || []), ...(spec.exit_rules || [])];
+  return allRules.some(r => (r.when || []).some(c => c.indicator === "event_score"));
+}
+
 function hasAscendingTriangleIndicator(spec) {
   const allRules = [...(spec.entry_rules || []), ...(spec.exit_rules || [])];
   return allRules.some(r => (r.when || []).some(c => c.indicator === "ascendingTriangle"));
@@ -649,7 +656,29 @@ ${hasVwap ? `
 
   // expose RSI value
   // rsiValue already computed above
-
+${hasEventScoreIndicator(spec) ? `
+  // macro_regime event_score — composite per-category signal emitted by
+  // scripts/event/macro_regime/poll.js. Locked spec (2026-06-03): per-market
+  // score = 0.3*d1h + 0.7*d4h + 0*d1d, inverse-liquidity weighted, aggregated
+  // per category. Null when poll.js hasn't run yet — gate fails closed.
+  let eventScoreFedPivot = null;
+  let eventScoreRecession = null;
+  let eventScoreEmployment = null;
+  let eventScoreGeopolitical = null;
+  let eventScoreInflation = null;
+  try {
+    const _fs   = require("fs");
+    const _path = require("path");
+    const _root = process.env.STRATCHAI_ROOT || process.cwd();
+    const _mr   = JSON.parse(_fs.readFileSync(_path.join(_root, "data/macro_regime.json"), "utf8"));
+    const _c    = _mr && _mr.categories ? _mr.categories : {};
+    eventScoreFedPivot     = _c.fed_pivot?.aggregate?.event_score    ?? null;
+    eventScoreRecession    = _c.recession?.aggregate?.event_score    ?? null;
+    eventScoreEmployment   = _c.employment?.aggregate?.event_score   ?? null;
+    eventScoreGeopolitical = _c.geopolitical?.aggregate?.event_score ?? null;
+    eventScoreInflation    = _c.inflation?.aggregate?.event_score    ?? null;
+  } catch (_) { /* file missing or unparseable — gate fails closed */ }
+` : ""}
   // --- ENTRY ---
   if (!position && !inCooldown) {
     let newPos = null;
@@ -927,6 +956,11 @@ function mapLeftSide(c) {
   if (c.indicator === "price_vs_band" && c.field === "deepBelowLower")
     return "deepBelowLower";
   if (c.indicator === "trend" && c.field === "up") return "trendUp";
+  if (c.indicator === "event_score" && c.field === "fed_pivot")    return "eventScoreFedPivot";
+  if (c.indicator === "event_score" && c.field === "recession")    return "eventScoreRecession";
+  if (c.indicator === "event_score" && c.field === "employment")   return "eventScoreEmployment";
+  if (c.indicator === "event_score" && c.field === "geopolitical") return "eventScoreGeopolitical";
+  if (c.indicator === "event_score" && c.field === "inflation")    return "eventScoreInflation";
   if (c.indicator === "trend" && c.field === "hasUptrend") return "trendHasUptrend";
   if (c.indicator === "trend" && c.field === "lastHigherHigh") return "trendHigherHigh";
   if (c.indicator === "trend" && c.field === "lastHigherLow") return "trendHigherLow";
