@@ -755,6 +755,10 @@ ${spec.exchange === 'alpaca' ? `
   //   - profit_floor_pct set (any regime, including flat with no flat-floor) → PROFIT_FLOOR
   //   - neither set → no profit floor exit
   if (!shouldExit) {
+    // Regime field routing: stock (alpaca) strategies read SPY-driven
+    // isFlatStock; crypto (coinbase/coinbase-paper) read BTC-driven isFlat.
+    // Pre-2026-06-06 the generator hardcoded isFlat for both, which silently
+    // gated stock strategies on BTC's daily change. Bug fixed in v0.4.0.
     const _isFlatRegime = (() => {
       try {
         const _fs = require('fs');
@@ -764,15 +768,15 @@ ${spec.exchange === 'alpaca' ? `
         // Fall back to direct computation if it doesn't exist yet.
         try {
           const r = JSON.parse(_fs.readFileSync(_path.join(_root, 'data/regime.json'), 'utf8'));
-          if (typeof r?.isFlat === 'boolean') return r.isFlat;
+          if (typeof r?.${spec.exchange === 'alpaca' ? 'isFlatStock' : 'isFlat'} === 'boolean') return r.${spec.exchange === 'alpaca' ? 'isFlatStock' : 'isFlat'};
         } catch {}
         let _bearish = false;
-        let _btcChange = null;
-        try { _bearish = !!JSON.parse(_fs.readFileSync(_path.join(_root, 'data/macro_guard.json'), 'utf8')).bearish; } catch {}
-        try { _btcChange = JSON.parse(_fs.readFileSync(_path.join(_root, 'data/btc_regime.json'), 'utf8')).changePct; } catch {}
+        let _change = null;
+        try { _bearish = !!JSON.parse(_fs.readFileSync(_path.join(_root, 'data/${spec.exchange === 'alpaca' ? 'macro_equity_guard' : 'macro_guard'}.json'), 'utf8')).${spec.exchange === 'alpaca' ? 'bearishStocks' : 'bearish'}; } catch {}
+        try { _change = JSON.parse(_fs.readFileSync(_path.join(_root, 'data/${spec.exchange === 'alpaca' ? 'spy_regime' : 'btc_regime'}.json'), 'utf8')).changePct; } catch {}
         // Fallback (no regime.json yet): mid-point threshold, no hysteresis.
-        // Asymmetric (matches scanner.js): down-trending BTC also classifies as flat.
-        return _bearish || (typeof _btcChange === 'number' && _btcChange < 1.0);
+        // Asymmetric (matches scanner.js): down-trending macro index also classifies as flat.
+        return _bearish || (typeof _change === 'number' && _change < ${spec.exchange === 'alpaca' ? '0.4' : '1.0'});
       } catch { return false; }
     })();
     let _floor = null;

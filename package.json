@@ -1,6 +1,6 @@
 {
   "name": "@stratchai/strategy-spec",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Declarative trading strategy specifications + code generator. Compose strategies from indicators + rule predicates instead of hand-writing JavaScript.",
   "main": "src/index.js",
   "bin": {
