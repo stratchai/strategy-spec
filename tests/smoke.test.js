@@ -136,6 +136,49 @@ ok("v0.4.0: stock spec emits SPY-driven regime read (isFlatStock)", () => {
   assert.ok(code.includes("bearishStocks"), "alpaca exchange should read bearishStocks field");
 });
 
+ok("v0.5.0: entry_trigger defaults to candle_close when omitted", () => {
+  const r = parseSpec({
+    name: "default_trigger_test",
+    exchange: "coinbase",
+    candle_granularity: "ONE_DAY",
+    candle_window: 200,
+    params: { sl_pct: -3, tp_pct: 6 },
+    entry_rules: [{
+      mode: "ENTRY",
+      when: [{ indicator: "trend", field: "up", op: "==", value: true }],
+    }],
+    exit_rules: [{
+      applies_to: "ENTRY",
+      when: [{ type: "pnl", field: "pnlPct", op: "<=", value_from_param: "sl_pct" }],
+      reason: "SL",
+    }],
+  });
+  assert.strictEqual(r.success, true);
+  assert.strictEqual(r.data.entry_trigger, "candle_close");
+});
+
+ok("v0.5.0: entry_trigger accepts news_event explicitly", () => {
+  const r = parseSpec({
+    name: "news_trigger_test",
+    exchange: "alpaca",
+    candle_granularity: "ONE_DAY",
+    candle_window: 200,
+    entry_trigger: "news_event",
+    params: { sl_pct: -3, tp_pct: 6 },
+    entry_rules: [{
+      mode: "ENTRY",
+      when: [{ indicator: "trend", field: "up", op: "==", value: true }],
+    }],
+    exit_rules: [{
+      applies_to: "ENTRY",
+      when: [{ type: "pnl", field: "pnlPct", op: "<=", value_from_param: "sl_pct" }],
+      reason: "SL",
+    }],
+  });
+  assert.strictEqual(r.success, true);
+  assert.strictEqual(r.data.entry_trigger, "news_event");
+});
+
 ok("generated code has zero @stratchai/core references (must be self-contained)", () => {
   const code = generateStrategyCode({
     name: "isolation_test",

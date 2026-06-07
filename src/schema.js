@@ -161,6 +161,13 @@ const specSchema = z.object({
     "SIX_HOUR", "ONE_DAY",
   ]).optional(),
   candle_window:      z.number().optional(),
+  // entry_trigger — Stream C item 2 (runtime migration). Selects which event
+  // stream advances the strategy's entry-rule evaluator. "candle_close" is the
+  // legacy behavior (every existing spec) — rules fire on bar close.
+  // "news_event" and "macro_event" wire the strategy to event-driven runtimes
+  // (news_paper_trader, macro_regime). Default preserves all current specs.
+  entry_trigger:      z.enum(["candle_close", "news_event", "macro_event"])
+                       .default("candle_close"),
   description:        z.string().optional(),
   params:             paramsSchema,
   entry_rules:        z.array(entryRule).min(1),
