@@ -174,6 +174,46 @@ function hasAscendingTriangleIndicator(spec) {
   return allRules.some(r => (r.when || []).some(c => c.indicator === "ascendingTriangle"));
 }
 
+// Emit the macro_regime gate preamble — runs at the TOP of the entry block so
+// signals are evaluated only when the configured category sits in a favorable
+// tercile per data/macro_gate.json (written by
+// scripts/event/macro_regime/compute_macro_gate.js). Returns "" when no gate
+// is configured. Exits are unaffected.
+//
+// Failure modes:
+//   - File missing / unparseable → fallback per spec (block/allow)
+//   - Category missing in file    → fallback per spec
+//   - bucket=insufficient_history → fallback per spec
+function emitMacroRegimeGateGuard(spec) {
+  const gate = spec.macro_regime_gate;
+  if (!gate) return "";
+  const fallback = gate.fallback_when_insufficient_history === "allow" ? "false" : "true";
+  const blockExpr = gate.required_bucket === "favorable_or_neutral"
+    ? `_cat.bucket !== "favorable" && _cat.bucket !== "neutral"`
+    : `_cat.bucket !== "favorable"`;
+  return `
+    // MACRO_REGIME_GATE — block entries unless ${gate.category} is ${gate.required_bucket}.
+    // Source: data/macro_gate.json (compute_macro_gate.js, refreshed by macro_regime poll).
+    // Fallback on missing/insufficient_history: ${gate.fallback_when_insufficient_history}.
+    const _macroGateBlocks = (() => {
+      try {
+        const _fs = require("fs");
+        const _path = require("path");
+        const _root = process.env.STRATCHAI_ROOT || process.cwd();
+        const _mg = JSON.parse(_fs.readFileSync(_path.join(_root, "data/macro_gate.json"), "utf8"));
+        const _cat = _mg?.categories?.${gate.category};
+        if (!_cat) return ${fallback};
+        if (_cat.bucket === "insufficient_history") return ${fallback};
+        return ${blockExpr};
+      } catch { return ${fallback}; }
+    })();
+    if (_macroGateBlocks) {
+      prevVI = vi;
+      return { action: "HOLD", position, lastExitTime, vi, bb, overlays };
+    }
+`;
+}
+
 function generateStrategyCode(spec) {
   const hasSqueeze       = hasSqueezeIndicator(spec);
   const hasVwap          = hasVwapIndicator(spec);
@@ -683,7 +723,7 @@ ${hasEventScoreIndicator(spec) ? `
   if (!position && !inCooldown) {
     let newPos = null;
     let reason = "";
-
+${emitMacroRegimeGateGuard(spec)}
     // generated entry rules
 ${generateEntryBlocks(spec.entry_rules).join("\n")}
 

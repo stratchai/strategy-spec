@@ -179,6 +179,121 @@ ok("v0.5.0: entry_trigger accepts news_event explicitly", () => {
   assert.strictEqual(r.data.entry_trigger, "news_event");
 });
 
+ok("v0.5.x: macro_regime_gate accepts recession + favorable defaults", () => {
+  const r = parseSpec({
+    name: "macro_gate_default_test",
+    exchange: "alpaca",
+    candle_granularity: "ONE_DAY",
+    candle_window: 200,
+    params: { sl_pct: -3, tp_pct: 6 },
+    entry_rules: [{
+      mode: "ENTRY",
+      when: [{ indicator: "trend", field: "up", op: "==", value: true }],
+    }],
+    exit_rules: [{
+      applies_to: "ENTRY",
+      when: [{ type: "pnl", field: "pnlPct", op: "<=", value_from_param: "sl_pct" }],
+      reason: "SL",
+    }],
+    macro_regime_gate: { category: "recession" },
+  });
+  assert.strictEqual(r.success, true);
+  assert.strictEqual(r.data.macro_regime_gate.category, "recession");
+  assert.strictEqual(r.data.macro_regime_gate.required_bucket, "favorable");
+  assert.strictEqual(r.data.macro_regime_gate.fallback_when_insufficient_history, "block");
+});
+
+ok("v0.6.0: macro_regime_gate rejects unknown / unvalidated categories", () => {
+  // "stagflation" is not in the enum
+  const r1 = parseSpec({
+    name: "bad_gate_cat_test",
+    exchange: "alpaca",
+    candle_granularity: "ONE_DAY",
+    candle_window: 200,
+    params: { sl_pct: -3, tp_pct: 6 },
+    entry_rules: [{ mode: "ENTRY", when: [{ indicator: "trend", field: "up", op: "==", value: true }] }],
+    exit_rules: [{ applies_to: "ENTRY", when: [{ type: "pnl", field: "pnlPct", op: "<=", value_from_param: "sl_pct" }], reason: "SL" }],
+    macro_regime_gate: { category: "stagflation" },
+  });
+  assert.strictEqual(r1.success, false);
+  // "inflation" is upstream-tracked but advisory-only ("low_weak") — schema
+  // intentionally rejects until a backtest validates it as a hard gate.
+  const r2 = parseSpec({
+    name: "advisory_inflation_test",
+    exchange: "alpaca",
+    candle_granularity: "ONE_DAY",
+    candle_window: 200,
+    params: { sl_pct: -3, tp_pct: 6 },
+    entry_rules: [{ mode: "ENTRY", when: [{ indicator: "trend", field: "up", op: "==", value: true }] }],
+    exit_rules: [{ applies_to: "ENTRY", when: [{ type: "pnl", field: "pnlPct", op: "<=", value_from_param: "sl_pct" }], reason: "SL" }],
+    macro_regime_gate: { category: "inflation" },
+  });
+  assert.strictEqual(r2.success, false);
+});
+
+ok("v0.5.x: macro_regime_gate rejects unknown sub-keys (strict)", () => {
+  const r = parseSpec({
+    name: "bad_gate_key_test",
+    exchange: "alpaca",
+    candle_granularity: "ONE_DAY",
+    candle_window: 200,
+    params: { sl_pct: -3, tp_pct: 6 },
+    entry_rules: [{ mode: "ENTRY", when: [{ indicator: "trend", field: "up", op: "==", value: true }] }],
+    exit_rules: [{ applies_to: "ENTRY", when: [{ type: "pnl", field: "pnlPct", op: "<=", value_from_param: "sl_pct" }], reason: "SL" }],
+    macro_regime_gate: { category: "recession", reqired_bucket: "favorable" },  // typo
+  });
+  assert.strictEqual(r.success, false);
+});
+
+ok("v0.5.x: generator emits MACRO_REGIME_GATE block when gate is set", () => {
+  const code = generateStrategyCode({
+    name: "gate_emission_test",
+    exchange: "alpaca",
+    candle_granularity: "ONE_DAY",
+    candle_window: 200,
+    params: { sl_pct: -3, tp_pct: 6 },
+    entry_rules: [{ mode: "ENTRY", when: [{ indicator: "trend", field: "up", op: "==", value: true }] }],
+    exit_rules: [{ applies_to: "ENTRY", when: [{ type: "pnl", field: "pnlPct", op: "<=", value_from_param: "sl_pct" }], reason: "SL" }],
+    macro_regime_gate: { category: "recession" },
+  });
+  assert.ok(code.includes("MACRO_REGIME_GATE"), "should emit gate block header comment");
+  assert.ok(code.includes("data/macro_gate.json"), "should read from data/macro_gate.json");
+  assert.ok(code.includes("_mg?.categories?.recession"), "should reference the configured category");
+  assert.ok(code.includes('_cat.bucket !== "favorable"'), "should block when not favorable");
+  // Parse without executing — catches syntax errors in emitted guard
+  new Function(code);
+});
+
+ok("v0.5.x: generator does NOT emit gate when macro_regime_gate omitted", () => {
+  const code = generateStrategyCode({
+    name: "no_gate_test",
+    exchange: "alpaca",
+    candle_granularity: "ONE_DAY",
+    candle_window: 200,
+    params: { sl_pct: -3, tp_pct: 6 },
+    entry_rules: [{ mode: "ENTRY", when: [{ indicator: "trend", field: "up", op: "==", value: true }] }],
+    exit_rules: [{ applies_to: "ENTRY", when: [{ type: "pnl", field: "pnlPct", op: "<=", value_from_param: "sl_pct" }], reason: "SL" }],
+  });
+  assert.ok(!code.includes("MACRO_REGIME_GATE"), "should NOT emit gate block when not configured");
+  assert.ok(!code.includes("data/macro_gate.json"), "should NOT reference macro_gate.json when not configured");
+});
+
+ok("v0.5.x: gate fallback=allow emits 'false' on missing history", () => {
+  const code = generateStrategyCode({
+    name: "allow_fallback_test",
+    exchange: "alpaca",
+    candle_granularity: "ONE_DAY",
+    candle_window: 200,
+    params: { sl_pct: -3, tp_pct: 6 },
+    entry_rules: [{ mode: "ENTRY", when: [{ indicator: "trend", field: "up", op: "==", value: true }] }],
+    exit_rules: [{ applies_to: "ENTRY", when: [{ type: "pnl", field: "pnlPct", op: "<=", value_from_param: "sl_pct" }], reason: "SL" }],
+    macro_regime_gate: { category: "recession", fallback_when_insufficient_history: "allow" },
+  });
+  // The guard's _cat-missing branch must return false (don't block).
+  // Match the literal "return false" inside the fallback context.
+  assert.ok(code.includes('if (!_cat) return false'), "missing-category fallback should be 'return false' under allow");
+});
+
 ok("generated code has zero @stratchai/core references (must be self-contained)", () => {
   const code = generateStrategyCode({
     name: "isolation_test",

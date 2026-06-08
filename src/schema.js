@@ -137,6 +137,35 @@ const newsSchema = z.object({
   technical_confirmation: technicalConfirmationSchema.optional(),
 }).strict();
 
+// macro_regime_gate — entry guard backed by data/macro_gate.json (written by
+// scripts/event/macro_regime/compute_macro_gate.js). When present, the
+// generator emits a preamble check that blocks ENTRY signals unless the
+// configured category is currently in the "favorable" tercile.
+//
+// CATEGORY ALLOWLIST — IMPORTANT:
+// The 2026-06-07 conjunction backtest only validated `recession` HIGH as an
+// edge source (+1.17pp/trade vs baseline across n=465 closed trades). The
+// upstream macro_regime poll tracks four other categories (fed_pivot,
+// employment, geopolitical, inflation) but none of them have backtest evidence
+// for use as a hard entry gate, and `inflation` is explicitly tagged
+// "low_weak" (advisory only) in poll.js. To prevent operator footguns —
+// where a spec author reads the enum and assumes "in schema" implies
+// "validated" — this allowlist is intentionally minimal. ADD a category here
+// only after a backtest demonstrates monotone-favorable performance for that
+// category's direction.
+//
+// fallback_when_insufficient_history:
+//   "block" — refuse entries when the worker reports insufficient_history (safe default)
+//   "allow" — permit entries when the worker has no terciles yet (use for new categories)
+//
+// Strict so typos fail at boot. Additive — existing specs that don't set the
+// field continue to behave exactly as before.
+const macroRegimeGateSchema = z.object({
+  category: z.enum(["recession"]),  // expand only after backtest validation
+  required_bucket: z.enum(["favorable", "favorable_or_neutral"]).default("favorable"),
+  fallback_when_insufficient_history: z.enum(["block", "allow"]).default("block"),
+}).strict();
+
 // params — strategy-specific knobs. passthrough; only loosely type the
 // common ones if present.
 const paramsSchema = z.object({
@@ -181,6 +210,7 @@ const specSchema = z.object({
   limit_order_mode:   limitOrderModeSchema.optional(),
   overlays:           z.record(z.string(), z.string()).optional(),
   news:               newsSchema.optional(),
+  macro_regime_gate:  macroRegimeGateSchema.optional(),
 }).passthrough();
 
 // ── Public API ──────────────────────────────────────────────────────────────
