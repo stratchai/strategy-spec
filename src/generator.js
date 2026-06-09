@@ -758,12 +758,17 @@ ${generateEntryBlocks(spec.entry_rules).join("\n")}
   let shouldExit = false;
   let exitReason = "";
 
-  // EOD_EXIT — only emitted for stock specs (exchange === 'alpaca'). Triggers
-  // in the last 30 minutes of regular trading hours (15:30–16:00 ET) when the
-  // position is up at least eod_exit_min_pnl_pct. Avoids overnight gap risk on
-  // small winners that won't reach the trending profit_floor before close.
-${spec.exchange === 'alpaca' ? `
-  if (!shouldExit && params.eod_exit_min_pnl_pct != null && pnlPct >= params.eod_exit_min_pnl_pct) {
+${spec.exchange === 'alpaca' && spec.params?.eod_exit_min_pnl_pct != null ? `
+  // EOD_EXIT — emitted only when exchange === 'alpaca' AND the spec sets
+  // eod_exit_min_pnl_pct. Triggers in the last 30 minutes of regular trading
+  // hours (15:30-16:00 ET) when the position is up at least the configured
+  // threshold. Avoids overnight gap risk on small winners that won't reach
+  // the trending profit_floor before close.
+  //
+  // Pre-0.6.1 the block was emitted for every alpaca spec with a runtime
+  // null-guard. 0.6.1 skips the block entirely when the param isn't set so
+  // generated code stays minimal.
+  if (!shouldExit && pnlPct >= params.eod_exit_min_pnl_pct) {
     const _isEodWindow = (() => {
       const _d = new Date(now);
       // Skip weekends quickly (UTC days 0=Sun, 6=Sat — these always include the ET weekend).

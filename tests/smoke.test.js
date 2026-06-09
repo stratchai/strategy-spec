@@ -294,6 +294,49 @@ ok("v0.5.x: gate fallback=allow emits 'false' on missing history", () => {
   assert.ok(code.includes('if (!_cat) return false'), "missing-category fallback should be 'return false' under allow");
 });
 
+ok("v0.6.1: alpaca spec WITHOUT eod_exit_min_pnl_pct skips the EOD block entirely", () => {
+  const code = generateStrategyCode({
+    name: "no_eod_test",
+    exchange: "alpaca",
+    candle_granularity: "ONE_DAY",
+    candle_window: 200,
+    params: { sl_pct: -3, tp_pct: 6 },  // no eod_exit_min_pnl_pct
+    entry_rules: [{ mode: "ENTRY", when: [{ indicator: "trend", field: "up", op: "==", value: true }] }],
+    exit_rules: [{ applies_to: "ENTRY", when: [{ type: "pnl", field: "pnlPct", op: "<=", value_from_param: "sl_pct" }], reason: "SL" }],
+  });
+  assert.ok(!code.includes("EOD_EXIT"), "generated code must NOT emit EOD_EXIT when param absent");
+  assert.ok(!code.includes("eod_exit_min_pnl_pct"), "generated code must NOT reference eod_exit_min_pnl_pct when param absent");
+  assert.ok(!code.includes("_isEodWindow"),       "generated code must NOT emit _isEodWindow helper when EOD block skipped");
+});
+
+ok("v0.6.1: alpaca spec WITH eod_exit_min_pnl_pct still emits the EOD block", () => {
+  const code = generateStrategyCode({
+    name: "with_eod_test",
+    exchange: "alpaca",
+    candle_granularity: "ONE_DAY",
+    candle_window: 200,
+    params: { sl_pct: -3, tp_pct: 6, eod_exit_min_pnl_pct: 0.5 },
+    entry_rules: [{ mode: "ENTRY", when: [{ indicator: "trend", field: "up", op: "==", value: true }] }],
+    exit_rules: [{ applies_to: "ENTRY", when: [{ type: "pnl", field: "pnlPct", op: "<=", value_from_param: "sl_pct" }], reason: "SL" }],
+  });
+  assert.ok(code.includes("EOD_EXIT"),                "generated code must emit EOD_EXIT when param is set");
+  assert.ok(code.includes("eod_exit_min_pnl_pct"),    "generated code must reference eod_exit_min_pnl_pct when set");
+  assert.ok(code.includes("_isEodWindow"),            "generated code must emit _isEodWindow helper when set");
+});
+
+ok("v0.6.1: coinbase spec never emits EOD block regardless of param", () => {
+  const code = generateStrategyCode({
+    name: "coinbase_no_eod_test",
+    exchange: "coinbase",
+    candle_granularity: "ONE_DAY",
+    candle_window: 200,
+    params: { sl_pct: -3, tp_pct: 6, eod_exit_min_pnl_pct: 0.5 },  // set but should be ignored
+    entry_rules: [{ mode: "ENTRY", when: [{ indicator: "trend", field: "up", op: "==", value: true }] }],
+    exit_rules: [{ applies_to: "ENTRY", when: [{ type: "pnl", field: "pnlPct", op: "<=", value_from_param: "sl_pct" }], reason: "SL" }],
+  });
+  assert.ok(!code.includes("EOD_EXIT"), "coinbase spec must not emit EOD_EXIT (crypto trades 24/7)");
+});
+
 ok("generated code has zero @stratchai/core references (must be self-contained)", () => {
   const code = generateStrategyCode({
     name: "isolation_test",
