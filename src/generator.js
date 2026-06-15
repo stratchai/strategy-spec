@@ -294,6 +294,14 @@ function runStrategyStep(ctx) {
 
   const rsiPeriod = params.rsi_period ?? 14;
   const rsiValue = calcRSI(prices, rsiPeriod); // null until enough data
+  // rsiValueClosed — RSI computed on the most-recent CLOSED bar only. Drops
+  // the in-progress partial bar that sk-agent-pool appends to prices every
+  // tick (see agent.js prices.push(price) in the runStep loop). Conditions
+  // with on_closed_bar_only:true reference this instead of rsiValue so live
+  // execution matches walk-forward audit semantics. Edge case: at
+  // prices.length < rsiPeriod + 2 this is null for one tick after rsiValue
+  // first becomes non-null; consumers null-guard via (rsiValueClosed ?? NaN).
+  const rsiValueClosed = prices.length >= 2 ? calcRSI(prices.slice(0, -1), rsiPeriod) : null;
 
   const atrPeriod = params.atr_period ?? 14;
   const atrData = calcATRExpansion(highs, lows, prices, atrPeriod);
@@ -974,7 +982,10 @@ function buildExitConditionExpr(c) {
     return `price < bb.middle`;
   }
   if (c.type === "rsi") {
-    return `rsiValue ${c.op} ${val}`;
+    const sym = c.on_closed_bar_only ? "rsiValueClosed" : "rsiValue";
+    return c.on_closed_bar_only
+      ? `(${sym} != null && ${sym} ${c.op} ${val})`
+      : `${sym} ${c.op} ${val}`;
   }
   if (c.type === "trend") {
     const trendMap = {
@@ -1026,7 +1037,12 @@ function mapLeftSide(c) {
     return "fastAboveSlow";
   if (c.indicator === "ma" && c.field === "fastBelowSlow")
     return "fastBelowSlow";
-  if (c.indicator === "rsi" && c.field === "value") return "rsiValue";
+  if (c.indicator === "rsi" && c.field === "value") {
+    // on_closed_bar_only: use rsiValueClosed (RSI on closed bars only). NaN
+    // coercion on null ensures the comparison never fires while the closed-bar
+    // RSI is undefined — NaN op X is false for >, <, >=, <=, ==.
+    return c.on_closed_bar_only ? "(rsiValueClosed ?? NaN)" : "rsiValue";
+  }
   if (c.indicator === "atr" && c.field === "pct") return "atrPct";
   if (c.indicator === "atr" && c.field === "expansion") return "atrExpansion";
   if (c.indicator === "ema" && c.field === "fastAboveSlow") return "emaFastAboveSlow";

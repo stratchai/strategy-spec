@@ -364,6 +364,90 @@ ok("generated code has zero @stratchai/core references (must be self-contained)"
   );
 });
 
+// on_closed_bar_only: indicator-condition flag that swaps the generated
+// RSI read from rsiValue (uses partial in-progress bar via the every-tick
+// `prices.push(price)` in agent.js) to rsiValueClosed (RSI on closed bars
+// only — matches walk-forward audit semantics). Required so the audited
+// rule and the live rule are the same rule.
+ok("schema accepts on_closed_bar_only flag", () => {
+  const r = parseSpec({
+    name: "closed_bar_flag_test",
+    exchange: "coinbase-paper",
+    candle_granularity: "ONE_DAY",
+    candle_window: 250,
+    params: { rsi_period: 14, rsi_exit: 55, min_hold_ms: 86400000 },
+    entry_rules: [{ mode: "X", when: [{ indicator: "rsi", field: "value", op: "<", value: 30 }] }],
+    exit_rules: [{
+      applies_to: "X",
+      reason: "RSI_RECOVERY",
+      when: [
+        { type: "time", field: "holdMs", op: ">=", value_from_param: "min_hold_ms" },
+        { indicator: "rsi", field: "value", op: ">=", value_from_param: "rsi_exit", on_closed_bar_only: true },
+      ],
+    }],
+  });
+  assert.strictEqual(r.success, true);
+});
+
+ok("generator emits rsiValueClosed precompute (always present, cost is negligible)", () => {
+  const code = generateStrategyCode({
+    name: "closed_bar_precompute",
+    exchange: "coinbase-paper",
+    candle_granularity: "ONE_DAY",
+    candle_window: 250,
+    params: { rsi_period: 14 },
+    entry_rules: [{ mode: "X", when: [{ indicator: "rsi", field: "value", op: "<", value: 30 }] }],
+    exit_rules: [{ applies_to: "X", reason: "TIME_EXIT", when: [{ type: "time", field: "holdMs", op: ">=", value: 1 }] }],
+  });
+  assert.ok(code.includes("rsiValueClosed"), "should declare rsiValueClosed");
+  assert.ok(code.includes("prices.slice(0, -1)"), "rsiValueClosed should slice off the partial bar");
+});
+
+ok("generator emits rsiValueClosed reference when on_closed_bar_only=true (indicator form)", () => {
+  const code = generateStrategyCode({
+    name: "closed_bar_emit_indicator",
+    exchange: "coinbase-paper",
+    candle_granularity: "ONE_DAY",
+    candle_window: 250,
+    params: { rsi_period: 14, rsi_exit: 55, min_hold_ms: 86400000 },
+    entry_rules: [{ mode: "X", when: [{ indicator: "rsi", field: "value", op: "<", value: 30 }] }],
+    exit_rules: [{
+      applies_to: "X",
+      reason: "RSI_RECOVERY",
+      when: [
+        { type: "time", field: "holdMs", op: ">=", value_from_param: "min_hold_ms" },
+        { indicator: "rsi", field: "value", op: ">=", value_from_param: "rsi_exit", on_closed_bar_only: true },
+      ],
+    }],
+  });
+  // The closed-bar exit condition emits the NaN-coerced form for null safety.
+  assert.ok(code.includes("(rsiValueClosed ?? NaN)"), "exit condition should reference closed-bar RSI (NaN-coerced)");
+  // Ensure the standard `rsiValue >= params.rsi_exit` form for this exit is GONE.
+  assert.ok(!/rsiValue \>= params\.rsi_exit/.test(code), "live-tick rsiValue read for rsi_exit should be replaced");
+});
+
+ok("generator keeps rsiValue (partial-bar) when on_closed_bar_only is absent", () => {
+  const code = generateStrategyCode({
+    name: "partial_bar_default",
+    exchange: "coinbase-paper",
+    candle_granularity: "ONE_DAY",
+    candle_window: 250,
+    params: { rsi_period: 14, rsi_exit: 55, min_hold_ms: 86400000 },
+    entry_rules: [{ mode: "X", when: [{ indicator: "rsi", field: "value", op: "<", value: 30 }] }],
+    exit_rules: [{
+      applies_to: "X",
+      reason: "RSI_RECOVERY",
+      when: [
+        { type: "time", field: "holdMs", op: ">=", value_from_param: "min_hold_ms" },
+        { indicator: "rsi", field: "value", op: ">=", value_from_param: "rsi_exit" }, // no flag → keep current behavior
+      ],
+    }],
+  });
+  // Without the flag, the exit references rsiValue (partial-bar). Closed-bar
+  // precompute is still present (it's cheap and unconditional) but isn't used.
+  assert.ok(/rsiValue \>= params\.rsi_exit/.test(code), "default exit should still read rsiValue (partial-bar)");
+});
+
 console.log("");
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

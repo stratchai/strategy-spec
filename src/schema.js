@@ -51,6 +51,16 @@ const ruleCondition = z.object({
   op:               z.string().optional(),       // ==, !=, <, <=, >, >=
   value:            z.unknown().optional(),
   value_from_param: z.string().optional(),
+  // When true, the indicator value used for this condition is computed on
+  // the most-recent CLOSED bar only, NOT on the in-progress partial bar that
+  // sk-agent-pool appends to `prices` via every-tick `prices.push(price)`.
+  // Use this on daily-granularity exit rules whose audit/walk-forward
+  // evidence used closed-bar semantics — otherwise live execution diverges
+  // from the audited rule. See sigma docs/strategy_testing_results.md
+  // 2026-06-15 entry for the rsi_oversold_bounce_daily empirical anchor.
+  // Currently honored by the generator for `indicator: rsi, field: value`
+  // and `type: rsi` conditions.
+  on_closed_bar_only: z.boolean().optional(),
 }).passthrough();
 
 const entryRule = z.object({
