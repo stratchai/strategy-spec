@@ -214,6 +214,91 @@ function emitMacroRegimeGateGuard(spec) {
 `;
 }
 
+// Emit earnings gate check — fires AFTER entry rules to veto entries near
+// scheduled earnings dates. Reads data/earnings_calendar.json (symbol → event info).
+// Fail-open: if calendar missing/symbol not found, entry proceeds.
+function emitEarningsGateCheck(spec) {
+  const gate = spec.earnings_gate;
+  if (!gate) return "";
+  const preBlock = gate.pre_earnings_block_days;
+  const postBlock = gate.post_earnings_block_days;
+  const source = gate.calendar_source || "data/earnings_calendar.json";
+  return `
+    // EARNINGS_GATE — block entries if they would hold through scheduled earnings.
+    // Source: ${source} (symbol → {date, pre_block_days?, post_block_days?}).
+    // Fail-open: if calendar missing or symbol not found, entry proceeds.
+    if (newPos) {
+      try {
+        const _fs = require("fs");
+        const _path = require("path");
+        const _root = process.env.STRATCHAI_ROOT || process.cwd();
+        const _cal = JSON.parse(_fs.readFileSync(_path.join(_root, "${source}"), "utf8"));
+        // Extract symbol from product (e.g. "AAPL-USD" → "AAPL", or "AAPL" → "AAPL")
+        const _sym = ctx.product.split("-")[0].split(":").pop();
+        const _event = _cal[_sym];
+        if (_event && _event.date) {
+          // date is ISO string (e.g. "2026-06-29") or timestamp
+          const _eventTs = typeof _event.date === "string"
+            ? new Date(_event.date).getTime()
+            : _event.date;
+          const _daysTilEvent = (_eventTs - now) / (1000 * 86400);
+          const _preBlock = _event.pre_block_days ?? ${preBlock};
+          const _postBlock = _event.post_block_days ?? ${postBlock};
+          if (_daysTilEvent >= -_postBlock && _daysTilEvent <= _preBlock) {
+            newPos = null;
+            reason = "EARNINGS_GATE";
+          }
+        }
+      } catch { /* fail-open: if calendar read fails, allow entry */ }
+    }
+`;
+}
+
+// Emit entry-proximity gate check — fires AFTER entry rules to veto entries
+// that sit too far above their structural support level. Requires the spec
+// to define support_indicator (cloudTop or lastHigherLowPrice) or the generator
+// to infer it from strategy type. Fail-open: if support level can't be computed.
+function emitEntryProximityGateCheck(spec) {
+  const gate = spec.entry_proximity_gate;
+  if (!gate) return "";
+  const maxDist = gate.max_entry_dist_above_support_pct;
+  const support = gate.support_indicator;
+
+  // Infer support indicator from strategy name if not explicitly set
+  let supportExpr = "";
+  if (support === "cloudTop") {
+    supportExpr = "ichimokuData?.cloudTop";
+  } else if (support === "lastHigherLowPrice") {
+    supportExpr = "trendStructureData?.lastHigherLowPrice";
+  } else if (!support) {
+    // Auto-detect from strategy name for common patterns
+    supportExpr = "(name.includes('ichimoku') ? ichimokuData?.cloudTop : trendStructureData?.lastHigherLowPrice)";
+  } else {
+    // Fallback: use the indicator name as-is
+    supportExpr = support;
+  }
+
+  return `
+    // ENTRY_PROXIMITY_GATE — block entries if price sits too far above support.
+    // Purpose: over-extended entries (>${maxDist}% above support) have their
+    // structural stop so close to SL that TREND_BREAK/CLOUD exit can't protect.
+    // Support level: ${support || "auto-detected from strategy name"}.
+    // Fail-open: if support level can't be computed, entry proceeds.
+    if (newPos) {
+      try {
+        const _support = ${supportExpr};
+        if (_support && _support > 0) {
+          const _distPct = ((price - _support) / _support) * 100;
+          if (_distPct > ${maxDist}) {
+            newPos = null;
+            reason = "ENTRY_PROXIMITY_GATE";
+          }
+        }
+      } catch { /* fail-open: if support level read fails, allow entry */ }
+    }
+`;
+}
+
 function generateStrategyCode(spec) {
   const hasSqueeze       = hasSqueezeIndicator(spec);
   const hasVwap          = hasVwapIndicator(spec);
@@ -734,6 +819,8 @@ ${hasEventScoreIndicator(spec) ? `
 ${emitMacroRegimeGateGuard(spec)}
     // generated entry rules
 ${generateEntryBlocks(spec.entry_rules).join("\n")}
+${emitEarningsGateCheck(spec)}
+${emitEntryProximityGateCheck(spec)}
 
     if (newPos) {
       prevVI = vi;

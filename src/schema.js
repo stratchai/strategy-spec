@@ -176,6 +176,29 @@ const macroRegimeGateSchema = z.object({
   fallback_when_insufficient_history: z.enum(["block", "allow"]).default("block"),
 }).strict();
 
+// earnings_gate — entry-rule modifier for stock/equity strategies. Blocks
+// entries that would hold through known earnings windows. Reads from
+// data/earnings_calendar.json (manual, symbol → {date, pre_block_days, post_block_days}).
+// Generator emits the check AFTER generated entry rules (so entries can be vetoed
+// by the gate without duplicating entry conditions). Fail-open if calendar is
+// missing or symbol not found.
+const earningsGateSchema = z.object({
+  pre_earnings_block_days:  z.number().int().positive(),
+  post_earnings_block_days: z.number().int().positive(),
+  calendar_source:          z.string().default("data/earnings_calendar.json"),
+}).strict();
+
+// max_entry_dist_above_support — entry proximity gate. Blocks entries when
+// entry price sits too far above the strategy's structural support level
+// (e.g. Ichimoku cloudTop, HH/HL lastHigherLow). Requires the strategy to
+// define which indicator provides support; generator maps by strategy type
+// or emits via a spec field `support_indicator`. Fail-open if support level
+// can't be computed.
+const entryProximityGateSchema = z.object({
+  max_entry_dist_above_support_pct: z.number().min(0).max(100),
+  support_indicator: z.enum(["cloudTop", "lastHigherLowPrice"]).optional(),
+}).strict();
+
 // params — strategy-specific knobs. passthrough; only loosely type the
 // common ones if present.
 const paramsSchema = z.object({
@@ -217,10 +240,12 @@ const specSchema = z.object({
   scan_blacklist:     z.array(blacklistEntry).optional(),
   min_backtest_score: z.number().optional(),
   min_vet_trades:     z.number().optional(),
-  limit_order_mode:   limitOrderModeSchema.optional(),
-  overlays:           z.record(z.string(), z.string()).optional(),
-  news:               newsSchema.optional(),
-  macro_regime_gate:  macroRegimeGateSchema.optional(),
+  limit_order_mode:        limitOrderModeSchema.optional(),
+  overlays:                z.record(z.string(), z.string()).optional(),
+  news:                    newsSchema.optional(),
+  macro_regime_gate:       macroRegimeGateSchema.optional(),
+  earnings_gate:           earningsGateSchema.optional(),
+  entry_proximity_gate:    entryProximityGateSchema.optional(),
 }).passthrough();
 
 // ── Public API ──────────────────────────────────────────────────────────────
